@@ -1,0 +1,155 @@
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+ScreenGui.Name = "SW_Flinger"
+ScreenGui.ResetOnSpawn = false
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 220, 0, 140)
+Frame.Position = UDim2.new(0.5, -110, 0.5, -70)
+Frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+Frame.Active = true
+Frame.Draggable = true
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1,0,0,30)
+Title.BackgroundTransparency = 1
+Title.Text = "SW FLINGER"
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 20
+Title.TextColor3 = Color3.fromRGB(255,0,0)
+
+local TextBox = Instance.new("TextBox", Frame)
+TextBox.Position = UDim2.new(0.1,0,0.3,0)
+TextBox.Size = UDim2.new(0.8,0,0.2,0)
+TextBox.PlaceholderText = "Username / Display"
+TextBox.Text = ""
+TextBox.TextColor3 = Color3.new(0,0,0)
+TextBox.TextSize = 14
+
+local Toggle = Instance.new("TextButton", Frame)
+Toggle.Position = UDim2.new(0.1,0,0.6,0)
+Toggle.Size = UDim2.new(0.8,0,0.25,0)
+Toggle.Text = "START"
+Toggle.Font = Enum.Font.SourceSansBold
+Toggle.TextSize = 20
+Toggle.BackgroundColor3 = Color3.fromRGB(255,0,0)
+Toggle.TextColor3 = Color3.new(1,1,1)
+
+local function Notify(txt, dur)
+    StarterGui:SetCore("SendNotification", {
+        Title = "SW FLINGER",
+        Text = txt,
+        Duration = dur or 3
+    })
+end
+
+local function GetPlayer(name)
+    name = name:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            if p.Name:lower():sub(1,#name) == name
+            or p.DisplayName:lower():sub(1,#name) == name then
+                return p
+            end
+        end
+    end
+end
+
+local Running = false
+local TargetPlayer
+
+local function FlingOnce(target)
+    local Char = LocalPlayer.Character
+    if not Char then return end
+
+    local Hum = Char:FindFirstChildOfClass("Humanoid")
+    local Root = Char:FindFirstChild("HumanoidRootPart")
+    local TChar = target.Character
+    local THum = TChar and TChar:FindFirstChildOfClass("Humanoid")
+    local TRoot = TChar and TChar:FindFirstChild("HumanoidRootPart")
+
+    if not (Hum and Root and THum and TRoot) then return end
+    if THum.Sit then return end
+
+    workspace.CurrentCamera.CameraSubject = TRoot
+
+    local BV = Instance.new("BodyVelocity")
+    BV.MaxForce = Vector3.new(1/0,1/0,1/0)
+    BV.Velocity = Vector3.new(9e8,9e8,9e8)
+    BV.Parent = Root
+
+    local start = tick()
+    while Running and tick() - start < 1.5 do
+        Root.CFrame =
+            TRoot.CFrame
+            * CFrame.new(math.random(-2,2), math.random(-2,2), math.random(-2,2))
+            * CFrame.Angles(math.rad(math.random(0,360)),0,0)
+
+        Root.Velocity = Vector3.new(9e7,9e7,9e7)
+        Root.RotVelocity = Vector3.new(9e8,9e8,9e8)
+        task.wait()
+    end
+
+    BV:Destroy()
+    workspace.CurrentCamera.CameraSubject = Hum
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if not Running or not TargetPlayer then return end
+
+    local root = char:WaitForChild("HumanoidRootPart", 1)
+    if not root then return end
+
+    RunService.RenderStepped:Wait()
+
+    task.spawn(function()
+        FlingOnce(TargetPlayer)
+    end)
+end)
+
+local function WatchTargetRespawn()
+    if not TargetPlayer then return end
+    TargetPlayer.CharacterAdded:Connect(function()
+        task.wait()
+    end)
+end
+
+Toggle.MouseButton1Click:Connect(function()
+    if Running then
+        Running = false
+        Toggle.Text = "START"
+        Toggle.BackgroundColor3 = Color3.fromRGB(255,0,0)
+        Notify("Stopped")
+        return
+    end
+
+    local target = GetPlayer(TextBox.Text)
+    if not target then
+        Notify("Invalid target")
+        return
+    end
+
+    TargetPlayer = target
+    WatchTargetRespawn()
+
+    Running = true
+    Toggle.Text = "STOP"
+    Toggle.BackgroundColor3 = Color3.fromRGB(0,200,0)
+    Notify("Flinging "..target.DisplayName)
+
+    task.spawn(function()
+        while Running do
+            if not TargetPlayer or TargetPlayer.Parent ~= Players then break end
+            FlingOnce(TargetPlayer)
+            task.wait()
+        end
+        Running = false
+        Toggle.Text = "START"
+        Toggle.BackgroundColor3 = Color3.fromRGB(255,0,0)
+    end)
+end)
