@@ -63,12 +63,22 @@ end
 local Running = false
 local TargetPlayer
 
+local function TargetAlive()
+    if not TargetPlayer then return false end
+    local c = TargetPlayer.Character
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    return h and h.Health > 0
+end
+
 local function FlingOnce(target)
+    if not TargetAlive() then return end
+
     local Char = LocalPlayer.Character
     if not Char then return end
 
     local Hum = Char:FindFirstChildOfClass("Humanoid")
     local Root = Char:FindFirstChild("HumanoidRootPart")
+
     local TChar = target.Character
     local THum = TChar and TChar:FindFirstChildOfClass("Humanoid")
     local TRoot = TChar and TChar:FindFirstChild("HumanoidRootPart")
@@ -83,8 +93,10 @@ local function FlingOnce(target)
     BV.Velocity = Vector3.new(9e8,9e8,9e8)
     BV.Parent = Root
 
-    local start = tick()
-    while Running and tick() - start < 1.5 do
+    local start = os.clock()
+    while Running and os.clock() - start < 1.5 do
+        if THum.Health <= 0 then break end
+
         Root.CFrame =
             TRoot.CFrame
             * CFrame.new(math.random(-2,2), math.random(-2,2), math.random(-2,2))
@@ -92,32 +104,44 @@ local function FlingOnce(target)
 
         Root.Velocity = Vector3.new(9e7,9e7,9e7)
         Root.RotVelocity = Vector3.new(9e8,9e8,9e8)
-        task.wait()
+        RunService.Heartbeat:Wait()
     end
 
     BV:Destroy()
     workspace.CurrentCamera.CameraSubject = Hum
 end
 
-LocalPlayer.CharacterAdded:Connect(function(char)
-    if not Running or not TargetPlayer then return end
-
-    local root = char:WaitForChild("HumanoidRootPart", 1)
-    if not root then return end
-
-    RunService.RenderStepped:Wait()
-
-    task.spawn(function()
-        FlingOnce(TargetPlayer)
-    end)
-end)
-
 local function WatchTargetRespawn()
     if not TargetPlayer then return end
+
     TargetPlayer.CharacterAdded:Connect(function()
-        task.wait()
+        if not Running then return end
+        if not TargetAlive() then return end
+        task.defer(function()
+            FlingOnce(TargetPlayer)
+        end)
     end)
 end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if not Running or not TargetAlive() then return end
+
+    local function attempt()
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        task.defer(function()
+            FlingOnce(TargetPlayer)
+        end)
+    end
+
+    attempt()
+
+    char.ChildAdded:Connect(function(c)
+        if c.Name == "HumanoidRootPart" then
+            attempt()
+        end
+    end)
+end)
 
 Toggle.MouseButton1Click:Connect(function()
     if Running then
@@ -146,8 +170,9 @@ Toggle.MouseButton1Click:Connect(function()
         while Running do
             if not TargetPlayer or TargetPlayer.Parent ~= Players then break end
             FlingOnce(TargetPlayer)
-            task.wait()
+            RunService.Heartbeat:Wait()
         end
+
         Running = false
         Toggle.Text = "START"
         Toggle.BackgroundColor3 = Color3.fromRGB(255,0,0)
